@@ -497,13 +497,13 @@ async fn init_next_win_times() -> Result<()> {
         .with_ymd_and_hms(monthly_year, month.number_from_month(), 1, 0, 0, 0)
         .single()
         .context("Failed to Utcify DateTime for monthly schedule")?
-        - TimeDelta::minutes(30);
+        - TimeDelta::hours(6);
 
     *yearly_lock = Utc
         .with_ymd_and_hms(year, 1, 1, 0, 0, 0)
         .single()
         .context("Failed to Utcify DateTime for yearly schedule")?
-        - TimeDelta::minutes(30);
+        - TimeDelta::hours(6);
 
     tracing::info!(
         "Setting next monthly win time to {}",
@@ -525,7 +525,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_env_filter(e_filter).init();
     #[cfg(not(debug_assertions))]
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
+        .with_max_level(tracing::Level::INFO)
         .init();
 
     let db = Database::try_init().await?;

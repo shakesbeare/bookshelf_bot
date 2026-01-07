@@ -497,13 +497,13 @@ async fn init_next_win_times() -> Result<()> {
         .with_ymd_and_hms(monthly_year, month.number_from_month(), 1, 0, 0, 0)
         .single()
         .context("Failed to Utcify DateTime for monthly schedule")?
-        - TimeDelta::hours(6);
+        - TimeDelta::minutes(30);
 
     *yearly_lock = Utc
         .with_ymd_and_hms(year, 1, 1, 0, 0, 0)
         .single()
         .context("Failed to Utcify DateTime for yearly schedule")?
-        - TimeDelta::hours(6);
+        - TimeDelta::minutes(30);
 
     tracing::info!(
         "Setting next monthly win time to {}",

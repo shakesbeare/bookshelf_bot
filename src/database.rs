@@ -292,7 +292,10 @@ impl Database {
     pub async fn yearly_leaderboard(&self) -> Result<Vec<LeaderboardEntry>> {
         let mut leaderboard: Vec<LeaderboardEntry> = sqlx::query_as(
             r#"
-            SELECT users.username, COUNT(user_books_read.book_id) AS books_read
+            SELECT DISTINCT users.username, (
+                SELECT COUNT(*) FROM user_books_read
+                WHERE user_id = users.id
+            ) AS books_read
             FROM users
             INNER JOIN user_books_read ON users.id = user_books_read.user_id
             WHERE user_books_read.datetime >= date('now', 'start of year');
@@ -301,7 +304,7 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        leaderboard.sort_by(|a, b| a.books_read.cmp(&b.books_read));
+        leaderboard.sort_by(|a, b| b.books_read.cmp(&a.books_read));
 
         Ok(leaderboard)
     }

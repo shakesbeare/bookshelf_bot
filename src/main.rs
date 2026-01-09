@@ -194,7 +194,7 @@ fn make_leaderboard(entries: &[LeaderboardEntry]) -> String {
             &format!("{i}.")
         };
         out.push_str(&format!(
-            "{} **{}** {} — book{} read\n",
+            "{} **{}** — {} book{} read\n",
             prefix, entry.username, entry.books_read, plural
         ));
     }

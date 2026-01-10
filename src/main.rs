@@ -5,7 +5,6 @@ use bookshelf_bot::database::LeaderboardEntry;
 use chrono::TimeDelta;
 use poise::serenity_prelude as serenity;
 
-use ::serenity::all::ChannelId;
 use ::serenity::all::CreateEmbed;
 use ::serenity::all::CreateMessage;
 use ::serenity::all::EditMessage;
@@ -17,11 +16,15 @@ use serenity::prelude::*;
 
 use bookshelf_bot::database::Database;
 use chrono::prelude::*;
+use tracing::instrument;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tokio::sync::Mutex;
+use tracing_subscriber::Layer as _;
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::util::SubscriberInitExt as _;
 
 static DB: OnceLock<Mutex<Database>> = OnceLock::new();
 static NEXT_MONTHLY_WIN: OnceLock<Mutex<DateTime<Utc>>> = OnceLock::new();
@@ -56,22 +59,21 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[poise::command(slash_command)]
 async fn count(ctx: Context<'_>) -> Result<()> {
+    tracing::info!("{} used `{}`", ctx.author().name, ctx.command().name);
     tracing::trace!("Counting books");
     tracing::trace!("Acquiring mutex");
     let mut db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
     let username = ctx.author();
     tracing::trace!("Getting count");
     let count = db.count_books_read(&username.name).await?;
-    ctx.send(
-        poise::CreateReply::default()
-            .content(format!("You have read {} books.", count))
-    )
-    .await?;
+    ctx.send(poise::CreateReply::default().content(format!("You have read {} books.", count)))
+        .await?;
     Ok(())
 }
 
 #[poise::command(slash_command)]
 async fn unread(ctx: Context<'_>, #[description = "Book Title"] title: String) -> Result<()> {
+    tracing::info!("{} used `{:?}`", ctx.author().name, ctx.invocation_string());
     tracing::trace!("Attempting to remove read entry for book");
     tracing::trace!("Acquiring mutex");
     let mut db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
@@ -107,6 +109,7 @@ async fn unread(ctx: Context<'_>, #[description = "Book Title"] title: String) -
 
 #[poise::command(slash_command)]
 async fn read(ctx: Context<'_>, #[description = "Book Title"] title: String) -> Result<()> {
+    tracing::info!("{} used `{:?}`", ctx.author().name, ctx.invocation_string());
     tracing::trace!("Adding book {} to user {}", title, ctx.author());
     tracing::trace!("Acquiring mutex");
     let mut db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
@@ -141,6 +144,7 @@ async fn read(ctx: Context<'_>, #[description = "Book Title"] title: String) -> 
 
 #[poise::command(slash_command)]
 async fn month(ctx: Context<'_>) -> Result<()> {
+    tracing::info!("{} used `{}`", ctx.author().name, ctx.command().name);
     let db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
     let monthly = db.monthly_leaderboard().await?;
     let month_year = chrono::Utc::now().format("%B %Y").to_string();
@@ -160,6 +164,7 @@ async fn month(ctx: Context<'_>) -> Result<()> {
 
 #[poise::command(slash_command)]
 async fn year(ctx: Context<'_>) -> Result<()> {
+    tracing::info!("{} used `{}`", ctx.author().name, ctx.command().name);
     let db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
     let yearly = db.yearly_leaderboard().await?;
     let year = chrono::Utc::now().format("%Y").to_string();
@@ -201,7 +206,7 @@ fn make_leaderboard(entries: &[LeaderboardEntry]) -> String {
     out
 }
 
-async fn check_time_and_assign_wins(ctx: Arc<serenity::prelude::Context>) -> Result<WinState> {
+async fn check_time_and_assign_wins(_ctx: Arc<serenity::prelude::Context>) -> Result<WinState> {
     tracing::trace!("Acquiring mutex locks");
     let win_state = {
         let month_win_time = NEXT_MONTHLY_WIN
@@ -289,7 +294,7 @@ struct WinChecker {
 
 #[async_trait]
 impl EventHandler for WinChecker {
-    async fn cache_ready(&self, ctx: serenity::prelude::Context, guilds: Vec<GuildId>) {
+    async fn cache_ready(&self, ctx: serenity::prelude::Context, _guilds: Vec<GuildId>) {
         tracing::trace!("Initialize next win times");
         init_next_win_times().await.unwrap();
         let ctx = Arc::new(ctx);
@@ -343,16 +348,21 @@ async fn update_live_thread(
                 let year = chrono::Utc::now().format("%Y").to_string();
                 let month_year = chrono::Utc::now().format("%B %Y").to_string();
 
-                msg = Some(channel
-                    .send_message(
-                        Arc::clone(&ctx),
-                        CreateMessage::new()
-                            .embeds(vec![
-                                CreateEmbed::new().title(format!("Live {} Yearly Leaderboard", year)).description(yearly),
-                                CreateEmbed::new().title(format!("Live {} Monthly Leaderboard", month_year)).description(monthly)
+                msg = Some(
+                    channel
+                        .send_message(
+                            Arc::clone(&ctx),
+                            CreateMessage::new().embeds(vec![
+                                CreateEmbed::new()
+                                    .title(format!("Live {} Yearly Leaderboard", year))
+                                    .description(yearly),
+                                CreateEmbed::new()
+                                    .title(format!("Live {} Monthly Leaderboard", month_year))
+                                    .description(monthly),
                             ]),
-                    )
-                    .await?);
+                        )
+                        .await?,
+                );
                 break;
             }
         }
@@ -371,7 +381,12 @@ async fn update_live_thread(
         let ctx = ctx;
         loop {
             if (rx.recv().await).is_some() {
-                let db = DB.get().context("Failed to acquire DB Mutex").unwrap().lock().await;
+                let db = DB
+                    .get()
+                    .context("Failed to acquire DB Mutex")
+                    .unwrap()
+                    .lock()
+                    .await;
                 let monthly = db.monthly_leaderboard().await.unwrap();
                 let yearly = db.yearly_leaderboard().await.unwrap();
                 let yearly = make_leaderboard(&yearly);
@@ -380,10 +395,19 @@ async fn update_live_thread(
                 let year = chrono::Utc::now().format("%Y").to_string();
                 let month_year = chrono::Utc::now().format("%B %Y").to_string();
 
-                msg.edit(Arc::clone(&ctx), EditMessage::new().embeds(vec![
-                    CreateEmbed::new().title(format!("Live {} Yearly Leaderboard", year)).description(yearly),
-                    CreateEmbed::new().title(format!("Live {} Monthly Leaderboard", month_year)).description(monthly)
-                ])).await.unwrap();
+                msg.edit(
+                    Arc::clone(&ctx),
+                    EditMessage::new().embeds(vec![
+                        CreateEmbed::new()
+                            .title(format!("Live {} Yearly Leaderboard", year))
+                            .description(yearly),
+                        CreateEmbed::new()
+                            .title(format!("Live {} Monthly Leaderboard", month_year))
+                            .description(monthly),
+                    ]),
+                )
+                .await
+                .unwrap();
             }
         }
     });
@@ -517,22 +541,47 @@ async fn init_next_win_times() -> Result<()> {
     Ok(())
 }
 
+fn setup_logging() -> Result<()> {
+    #[cfg(debug_assertions)]
+    let e_filter = tracing_subscriber::EnvFilter::new("info,bookshelf_bot=trace");
+    #[cfg(not(debug_assertions))]
+    let e_filter = tracing_subscriber::EnvFilter::new("info");
+
+    let stderr_layer = tracing_subscriber::fmt::layer()
+        .pretty()
+        .with_writer(std::io::stderr)
+        .with_filter(e_filter.clone());
+
+    let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("bookshelf_bot")
+        .filename_suffix("log")
+        .build("./logs")?;
+
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(true)
+        .with_writer(file_appender)
+        .with_filter(e_filter);
+
+    tracing_subscriber::Registry::default()
+        .with(stderr_layer)
+        .with(file_layer)
+        .try_init()?;
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let e_filter = tracing_subscriber::EnvFilter::new("info,bookshelf_bot=trace");
     dotenvy::dotenv()?;
-    #[cfg(debug_assertions)]
-    tracing_subscriber::fmt().with_env_filter(e_filter).init();
-    #[cfg(not(debug_assertions))]
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
-
+    setup_logging()?;
     let db = Database::try_init().await?;
     DB.get_or_init(|| Mutex::new(db));
 
     let token = std::env::var("DISCORD_TOKEN")?;
-    let intents = GatewayIntents::non_privileged() | GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
 
     let framework = poise::Framework::builder()
         .setup(|ctx, ready, framework| {

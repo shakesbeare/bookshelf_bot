@@ -140,8 +140,6 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        dbg!(username.as_ref(), &id);
-
         Ok(id.into_inner())
     }
 

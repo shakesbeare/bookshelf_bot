@@ -16,7 +16,6 @@ use serenity::prelude::*;
 
 use bookshelf_bot::database::Database;
 use chrono::prelude::*;
-use tracing::instrument;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
@@ -68,6 +67,28 @@ async fn count(ctx: Context<'_>) -> Result<()> {
     let count = db.count_books_read(&username.name).await?;
     ctx.send(poise::CreateReply::default().content(format!("You have read {} books.", count)))
         .await?;
+    Ok(())
+}
+
+#[poise::command(slash_command)]
+async fn history(ctx: Context<'_>) -> Result<()> {
+    tracing::info!("{} used `{}`", ctx.author().name, ctx.invocation_string());
+    tracing::trace!("Listing all read books for {}", ctx.author().name);
+    tracing::trace!("Acquiring Mutex");
+    let mut db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
+    tracing::trace!("Getting list");
+    let list = db.books_read_by(&ctx.author().name).await?;
+    let mut content = String::new();
+    for entry in list {
+        content += &format!("- {}\n", entry);
+    }
+    ctx.send(
+        poise::CreateReply::default().embed(
+            serenity::CreateEmbed::new()
+                .title(format!("Books Read By {}:", &ctx.author().name))
+                .description(content),
+        ),
+    ).await?;
     Ok(())
 }
 
@@ -592,7 +613,7 @@ async fn main() -> anyhow::Result<()> {
             })
         })
         .options(poise::FrameworkOptions {
-            commands: vec![read(), unread(), count(), month(), year()],
+            commands: vec![read(), unread(), count(), month(), year(), history()],
             ..Default::default()
         })
         .build();

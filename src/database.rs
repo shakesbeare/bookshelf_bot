@@ -44,6 +44,25 @@ impl Integer64 {
     }
 }
 
+#[derive(
+    Debug,
+    Clone,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    serde::Serialize,
+    serde::Deserialize,
+    sqlx::FromRow,
+)]
+struct String_(String);
+
+impl String_ {
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
 #[derive(Debug)]
 pub struct Database {
     pool: Pool<Sqlite>,
@@ -229,6 +248,28 @@ impl Database {
         .into_inner();
 
         Ok(count)
+    }
+
+    /// Returns a Vec of the titles of books read by thegiven user
+    pub async fn books_read_by<S: AsRef<str>>(&mut self, username: S) -> Result<Vec<String>> {
+        let user_id = self.ensure_user(&username).await?;
+        let list: Vec<String_> = sqlx::query_as::<_, String_>(
+            r#"
+            SELECT books.title FROM books
+            INNER JOIN (
+                SELECT user_books_read.book_id from user_books_read 
+                INNER JOIN users ON users.id = user_books_read.user_id
+                WHERE users.id = $1
+            ) AS B ON books.id = B.book_id;
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let list = list.iter().map(|e| e.clone().into_inner()).collect();
+
+        Ok(list)
     }
 
     /// Returns the number of books the given user has read

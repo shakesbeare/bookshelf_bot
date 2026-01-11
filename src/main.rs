@@ -196,7 +196,7 @@ fn make_leaderboard(entries: &[LeaderboardEntry]) -> String {
         } else if i == 2 {
             ":third_place:"
         } else {
-            &format!("{i}.")
+            &format!("{}.", i + 1)
         };
         out.push_str(&format!(
             "{} **{}** — {} book{} read\n",

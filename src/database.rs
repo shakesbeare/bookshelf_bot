@@ -119,7 +119,7 @@ impl Database {
             id INTEGER PRIMARY KEY NOT NULL,
             user_id INTEGER REFERENCES users NOT NULL,
             book_id INTEGER REFERENCES books NOT NULL,
-            datetime TEXT DEFAULT (datetime('now', 'localtime')) CURRENT_TIMESTAMP NOT NULL,
+            datetime TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
             UNIQUE(user_id, book_id)
         );
 

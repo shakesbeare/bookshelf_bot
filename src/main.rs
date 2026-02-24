@@ -2,6 +2,7 @@ use anyhow::Context as _;
 use anyhow::Error;
 use anyhow::Result;
 use bookshelf_bot::database::LeaderboardEntry;
+use bookshelf_bot::database::Since;
 use chrono::TimeDelta;
 use poise::serenity_prelude as serenity;
 
@@ -77,7 +78,7 @@ async fn history(ctx: Context<'_>) -> Result<()> {
     tracing::trace!("Acquiring Mutex");
     let mut db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
     tracing::trace!("Getting list");
-    let list = db.books_read_by(&ctx.author().name).await?;
+    let list = db.books_read_by(&ctx.author().name, Since::Forever).await?;
     let mut content = String::new();
     for entry in list {
         content += &format!("- {}\n", entry);
@@ -327,7 +328,9 @@ impl EventHandler for WinChecker {
             let ctx = Arc::clone(&ctx);
             tracing::trace!("Starting other threads");
             tracing::trace!("Starting live leaderboard thread");
-            update_live_thread(Arc::clone(&ctx), rx).await.unwrap();
+            if let Err(e) = update_live_thread(Arc::clone(&ctx), rx).await {
+                tracing::error!("Error while trying to start leaderboard thread: {}", e);
+            }
             tracing::trace!("Starting win checker thread");
             check_win_thread(ctx);
             self.is_loop_running.swap(true, Ordering::Relaxed);
@@ -357,7 +360,10 @@ async fn update_live_thread(
                 let get_messages = GetMessages::new().limit(100);
                 let messages = channel.messages(Arc::clone(&ctx), get_messages).await?;
                 if !messages.is_empty() {
-                    channel.delete_messages(Arc::clone(&ctx), messages).await?;
+                    if let Err(e) = channel.delete_messages(Arc::clone(&ctx), messages).await {
+                        tracing::error!("Failed to delete messages: {}", e);
+                        tracing::warn!("Message history may not be deleted, continuing anyway");
+                    }
                 }
                 tracing::trace!("send new leaderboards");
                 let db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;

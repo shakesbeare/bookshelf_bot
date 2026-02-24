@@ -3,6 +3,13 @@ use anyhow::Result;
 use chrono::prelude::*;
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Since {
+    Monthly,
+    Yearly,
+    Forever,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct LeaderboardEntry {
     pub username: String,
@@ -251,19 +258,25 @@ impl Database {
     }
 
     /// Returns a Vec of the titles of books read by thegiven user
-    pub async fn books_read_by<S: AsRef<str>>(&mut self, username: S) -> Result<Vec<String>> {
+    pub async fn books_read_by<S: AsRef<str>>(&mut self, username: S, since: Since) -> Result<Vec<String>> {
         let user_id = self.ensure_user(&username).await?;
+        let since_clause = match since {
+            Since::Monthly => "AND date(user_books_read.datetime) >= date('now', 'start of month')",
+            Since::Yearly => "AND date(user_books_read.datetime) >= date('now', start of year')",
+            Since::Forever => "",
+        };
         let list: Vec<String_> = sqlx::query_as::<_, String_>(
             r#"
             SELECT books.title FROM books
             INNER JOIN (
                 SELECT user_books_read.book_id from user_books_read 
                 INNER JOIN users ON users.id = user_books_read.user_id
-                WHERE users.id = $1
+                WHERE users.id = $1 $2
             ) AS B ON books.id = B.book_id;
             "#,
         )
         .bind(user_id)
+        .bind(since_clause)
         .fetch_all(&self.pool)
         .await?;
 
@@ -312,11 +325,11 @@ impl Database {
             r#"
             SELECT DISTINCT users.username, (
                 SELECT COUNT(*) FROM user_books_read
-                WHERE user_id = users.id
+                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of month')
             ) AS books_read
             FROM users
             INNER JOIN user_books_read ON users.id = user_books_read.user_id
-            WHERE user_books_read.datetime >= date('now', 'start of month');
+            WHERE date(user_books_read.datetime) >= date('now', 'start of month');
             "#,
         )
         .fetch_all(&self.pool)
@@ -333,11 +346,11 @@ impl Database {
             r#"
             SELECT DISTINCT users.username, (
                 SELECT COUNT(*) FROM user_books_read
-                WHERE user_id = users.id
+                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of year')
             ) AS books_read
             FROM users
             INNER JOIN user_books_read ON users.id = user_books_read.user_id
-            WHERE user_books_read.datetime >= date('now', 'start of year');
+            WHERE date(user_books_read.datetime) >= date('now', 'start of year');
             "#,
         )
         .fetch_all(&self.pool)

@@ -119,7 +119,7 @@ impl Database {
             id INTEGER PRIMARY KEY NOT NULL,
             user_id INTEGER REFERENCES users NOT NULL,
             book_id INTEGER REFERENCES books NOT NULL,
-            datetime TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            datetime TEXT DEFAULT (datetime('now', 'localtime')) CURRENT_TIMESTAMP NOT NULL,
             UNIQUE(user_id, book_id)
         );
 
@@ -205,8 +205,8 @@ impl Database {
 
         sqlx::query(
             r#"
-            INSERT INTO user_books_read (user_id, book_id)
-            VALUES ($1, $2);
+            INSERT INTO user_books_read (user_id, book_id, datetime)
+            VALUES ($1, $2, datetime('now', 'localtime'));
             "#,
         )
         .bind(user_id)

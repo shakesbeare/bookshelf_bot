@@ -3,7 +3,7 @@ use anyhow::Result;
 use chrono::prelude::*;
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 
-#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, poise::ChoiceParameter)]
 pub enum Since {
     Monthly,
     Yearly,
@@ -258,25 +258,32 @@ impl Database {
     }
 
     /// Returns a Vec of the titles of books read by thegiven user
-    pub async fn books_read_by<S: AsRef<str>>(&mut self, username: S, since: Since) -> Result<Vec<String>> {
+    pub async fn books_read_by<S: AsRef<str>>(
+        &mut self,
+        username: S,
+        since: Since,
+    ) -> Result<Vec<String>> {
         let user_id = self.ensure_user(&username).await?;
         let since_clause = match since {
             Since::Monthly => "AND date(user_books_read.datetime) >= date('now', 'start of month')",
-            Since::Yearly => "AND date(user_books_read.datetime) >= date('now', start of year')",
+            Since::Yearly => "AND date(user_books_read.datetime) >= date('now', 'start of year')",
             Since::Forever => "",
         };
         let list: Vec<String_> = sqlx::query_as::<_, String_>(
-            r#"
+            format!(
+                r#"
             SELECT books.title FROM books
             INNER JOIN (
                 SELECT user_books_read.book_id from user_books_read 
                 INNER JOIN users ON users.id = user_books_read.user_id
-                WHERE users.id = $1 $2
+                WHERE users.id = $1 {}
             ) AS B ON books.id = B.book_id;
             "#,
+                since_clause
+            )
+            .as_str(),
         )
         .bind(user_id)
-        .bind(since_clause)
         .fetch_all(&self.pool)
         .await?;
 

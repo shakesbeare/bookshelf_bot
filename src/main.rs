@@ -72,13 +72,18 @@ async fn count(ctx: Context<'_>) -> Result<()> {
 }
 
 #[poise::command(slash_command)]
-async fn history(ctx: Context<'_>) -> Result<()> {
+async fn history(
+    ctx: Context<'_>,
+    #[description = "Time Period"] time_period: Option<Since>,
+) -> Result<()> {
     tracing::info!("{} used `{}`", ctx.author().name, ctx.invocation_string());
     tracing::trace!("Listing all read books for {}", ctx.author().name);
     tracing::trace!("Acquiring Mutex");
     let mut db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
     tracing::trace!("Getting list");
-    let list = db.books_read_by(&ctx.author().name, Since::Forever).await?;
+    let list = db
+        .books_read_by(&ctx.author().name, time_period.unwrap_or(Since::Forever))
+        .await?;
     let mut content = String::new();
     for entry in list {
         content += &format!("- {}\n", entry);
@@ -89,7 +94,8 @@ async fn history(ctx: Context<'_>) -> Result<()> {
                 .title(format!("Books Read By {}:", &ctx.author().name))
                 .description(content),
         ),
-    ).await?;
+    )
+    .await?;
     Ok(())
 }
 

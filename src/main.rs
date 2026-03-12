@@ -526,7 +526,7 @@ fn check_win_thread(ctx: Arc<serenity::prelude::Context>) {
                 }
             }
             tracing::trace!("End win check loop");
-            tokio::time::sleep(std::time::Duration::from_mins(10)).await;
+            tokio::time::sleep(std::time::Duration::from_hours(24)).await;
         }
     });
 }

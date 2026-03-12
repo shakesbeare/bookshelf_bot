@@ -373,7 +373,7 @@ impl Database {
         let winner = board.first().context("No leaderboard entries")?;
         let winner_id = self.ensure_user(&winner.username).await?;
         let now = Utc::now();
-        let month: Month = Month::try_from(u8::try_from(now.month())?)?.pred();
+        let month: Month = Month::try_from(u8::try_from(now.month())?)?;
         let year = if month == Month::December {
             Utc::now().year() - 1
         } else {

@@ -265,8 +265,8 @@ impl Database {
     ) -> Result<Vec<String>> {
         let user_id = self.ensure_user(&username).await?;
         let since_clause = match since {
-            Since::Monthly => "AND date(user_books_read.datetime) >= date('now', 'start of month')",
-            Since::Yearly => "AND date(user_books_read.datetime) >= date('now', 'start of year')",
+            Since::Monthly => "AND date(user_books_read.datetime) >= date('now', 'start of month +8 hours')",
+            Since::Yearly => "AND date(user_books_read.datetime) >= date('now', 'start of year +8 hours')",
             Since::Forever => "",
         };
         let list: Vec<String_> = sqlx::query_as::<_, String_>(
@@ -332,11 +332,11 @@ impl Database {
             r#"
             SELECT DISTINCT users.username, (
                 SELECT COUNT(*) FROM user_books_read
-                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of month')
+                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of month +8 hours')
             ) AS books_read
             FROM users
             INNER JOIN user_books_read ON users.id = user_books_read.user_id
-            WHERE date(user_books_read.datetime) >= date('now', 'start of month');
+            WHERE date(user_books_read.datetime) >= date('now', 'start of month +8 hours');
             "#,
         )
         .fetch_all(&self.pool)
@@ -353,11 +353,11 @@ impl Database {
             r#"
             SELECT DISTINCT users.username, (
                 SELECT COUNT(*) FROM user_books_read
-                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of year')
+                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of year +8 hours')
             ) AS books_read
             FROM users
             INNER JOIN user_books_read ON users.id = user_books_read.user_id
-            WHERE date(user_books_read.datetime) >= date('now', 'start of year');
+            WHERE date(user_books_read.datetime) >= date('now', 'start of year +8 hours');
             "#,
         )
         .fetch_all(&self.pool)

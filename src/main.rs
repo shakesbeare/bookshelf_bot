@@ -550,17 +550,28 @@ async fn init_next_win_times() -> Result<()> {
         .lock()
         .await;
 
+    // End of day GMT is 8 hours before pacific time
+    // Win should occur at 8 am pacific time on first of month
+    // First of month GMT begins 8 hours before midnight pacific, therefore it occurs at 4pm
+    //      pacific
+    // 8 am is 16 hours after 4pm the previous day
+    // Therefore, win should occur 16 hours *after* GMT turns over to the next month.
+    // Wins occur at:
+    //     8 am pacific
+    //     9 am mountain
+    let time_delta = TimeDelta::hours(16); 
+
     *monthly_lock = Utc
         .with_ymd_and_hms(monthly_year, month.number_from_month(), 1, 0, 0, 0)
         .single()
         .context("Failed to Utcify DateTime for monthly schedule")?
-        - TimeDelta::minutes(30);
+        + time_delta;
 
     *yearly_lock = Utc
         .with_ymd_and_hms(year, 1, 1, 0, 0, 0)
         .single()
         .context("Failed to Utcify DateTime for yearly schedule")?
-        - TimeDelta::minutes(30);
+        + time_delta;
 
     tracing::info!(
         "Setting next monthly win time to {}",

@@ -11,6 +11,14 @@ pub enum Since {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct BookRead {
+    pub username: String,
+    pub title: String,
+    pub datetime: String,
+}
+
+
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct LeaderboardEntry {
     pub username: String,
     pub books_read: i64,
@@ -47,25 +55,6 @@ struct Integer64(i64);
 
 impl Integer64 {
     pub fn into_inner(self) -> i64 {
-        self.0
-    }
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    serde::Serialize,
-    serde::Deserialize,
-    sqlx::FromRow,
-)]
-struct String_(String);
-
-impl String_ {
-    pub fn into_inner(self) -> String {
         self.0
     }
 }
@@ -262,19 +251,19 @@ impl Database {
         &mut self,
         username: S,
         since: Since,
-    ) -> Result<Vec<String>> {
+    ) -> Result<Vec<BookRead>> {
         let user_id = self.ensure_user(&username).await?;
         let since_clause = match since {
-            Since::Monthly => "AND date(user_books_read.datetime) >= date('now', 'start of month +8 hours')",
-            Since::Yearly => "AND date(user_books_read.datetime) >= date('now', 'start of year +8 hours')",
+            Since::Monthly => "AND date(user_books_read.datetime) >= date('now', 'start of month', '+8 hours')",
+            Since::Yearly => "AND date(user_books_read.datetime) >= date('now', 'start of year', '+8 hours')",
             Since::Forever => "",
         };
-        let list: Vec<String_> = sqlx::query_as::<_, String_>(
+        let list: Vec<BookRead> = sqlx::query_as::<_, BookRead>(
             format!(
                 r#"
-            SELECT books.title FROM books
+            SELECT books.title, B.datetime, B.username FROM books
             INNER JOIN (
-                SELECT user_books_read.book_id from user_books_read 
+                SELECT user_books_read.book_id, user_books_read.datetime, users.username FROM user_books_read 
                 INNER JOIN users ON users.id = user_books_read.user_id
                 WHERE users.id = $1 {}
             ) AS B ON books.id = B.book_id;
@@ -287,7 +276,7 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        let list = list.iter().map(|e| e.clone().into_inner()).collect();
+        let list = list.to_vec();
 
         Ok(list)
     }
@@ -332,11 +321,11 @@ impl Database {
             r#"
             SELECT DISTINCT users.username, (
                 SELECT COUNT(*) FROM user_books_read
-                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of month +8 hours')
+                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of month', '+8 hours')
             ) AS books_read
             FROM users
             INNER JOIN user_books_read ON users.id = user_books_read.user_id
-            WHERE date(user_books_read.datetime) >= date('now', 'start of month +8 hours');
+            WHERE date(user_books_read.datetime) >= date('now', 'start of month', '+8 hours');
             "#,
         )
         .fetch_all(&self.pool)
@@ -353,11 +342,11 @@ impl Database {
             r#"
             SELECT DISTINCT users.username, (
                 SELECT COUNT(*) FROM user_books_read
-                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of year +8 hours')
+                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of year', '+8 hours')
             ) AS books_read
             FROM users
             INNER JOIN user_books_read ON users.id = user_books_read.user_id
-            WHERE date(user_books_read.datetime) >= date('now', 'start of year +8 hours');
+            WHERE date(user_books_read.datetime) >= date('now', 'start of year', '+8 hours');
             "#,
         )
         .fetch_all(&self.pool)

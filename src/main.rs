@@ -17,6 +17,7 @@ use serenity::prelude::*;
 
 use bookshelf_bot::database::Database;
 use chrono::prelude::*;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
@@ -71,6 +72,12 @@ async fn count(ctx: Context<'_>) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, PartialOrd, Ord, PartialEq, Eq)]
+struct YearMonth {
+    year: i32,
+    month: u32,
+}
+
 #[poise::command(slash_command)]
 async fn history(
     ctx: Context<'_>,
@@ -84,10 +91,33 @@ async fn history(
     let list = db
         .books_read_by(&ctx.author().name, time_period.unwrap_or(Since::Forever))
         .await?;
+    tracing::trace!("{:?}", list);
     let mut content = String::new();
+    let mut books_map: BTreeMap<YearMonth, Vec<String>> = BTreeMap::new();
+    tracing::trace!("Creating month map");
     for entry in list {
-        content += &format!("- {}\n", entry);
+        tracing::trace!("--Parsing datetime");
+        tracing::trace!("{}", &entry.datetime);
+        let datetime = NaiveDateTime::parse_from_str(&entry.datetime, "%Y-%m-%d %H:%M:%S")?;
+        let datetime = DateTime::<Utc>::from_naive_utc_and_offset(datetime, Utc);
+        let year_month = YearMonth {
+            year: datetime.year(),
+            month: datetime.month(),
+        };
+        tracing::trace!("--Inserting entry");
+        books_map.entry(year_month).and_modify(|v| v.push(entry.title.clone())).or_insert(vec![entry.title.clone()]);
     }
+
+    tracing::trace!("Creating output string");
+    for (year_month, titles) in books_map {
+        let month: chrono::Month = chrono::Month::try_from(u8::try_from(year_month.month)?)?;
+        let year_month_str = format!("{} {}", month.name(), year_month.year);
+        content += format!("## {}\n", year_month_str).as_str();
+        for title in titles {
+            content += format!("- {}\n", title).as_str();
+        }
+    }
+
     ctx.send(
         poise::CreateReply::default().embed(
             serenity::CreateEmbed::new()
@@ -365,11 +395,9 @@ async fn update_live_thread(
                 tracing::trace!("delete 100 messages");
                 let get_messages = GetMessages::new().limit(100);
                 let messages = channel.messages(Arc::clone(&ctx), get_messages).await?;
-                if !messages.is_empty() {
-                    if let Err(e) = channel.delete_messages(Arc::clone(&ctx), messages).await {
-                        tracing::error!("Failed to delete messages: {}", e);
-                        tracing::warn!("Message history may not be deleted, continuing anyway");
-                    }
+                if !messages.is_empty() && let Err(e) = channel.delete_messages(Arc::clone(&ctx), messages).await {
+                    tracing::error!("Failed to delete messages: {}", e);
+                    tracing::warn!("Message history may not be deleted, continuing anyway");
                 }
                 tracing::trace!("send new leaderboards");
                 let db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;

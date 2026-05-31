@@ -321,11 +321,11 @@ impl Database {
             r#"
             SELECT DISTINCT users.username, (
                 SELECT COUNT(*) FROM user_books_read
-                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of month', '+8 hours')
+                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of month', '+16 hours')
             ) AS books_read
             FROM users
             INNER JOIN user_books_read ON users.id = user_books_read.user_id
-            WHERE date(user_books_read.datetime) >= date('now', 'start of month', '+8 hours');
+            WHERE date(user_books_read.datetime) >= date('now', 'start of month', '+16 hours');
             "#,
         )
         .fetch_all(&self.pool)
@@ -342,11 +342,11 @@ impl Database {
             r#"
             SELECT DISTINCT users.username, (
                 SELECT COUNT(*) FROM user_books_read
-                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of year', '+8 hours')
+                WHERE user_id = users.id AND date(user_books_read.datetime) >= date('now', 'start of year', '+16 hours')
             ) AS books_read
             FROM users
             INNER JOIN user_books_read ON users.id = user_books_read.user_id
-            WHERE date(user_books_read.datetime) >= date('now', 'start of year', '+8 hours');
+            WHERE date(user_books_read.datetime) >= date('now', 'start of year', '+16 hours');
             "#,
         )
         .fetch_all(&self.pool)

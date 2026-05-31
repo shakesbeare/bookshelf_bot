@@ -105,7 +105,10 @@ async fn history(
             month: datetime.month(),
         };
         tracing::trace!("--Inserting entry");
-        books_map.entry(year_month).and_modify(|v| v.push(entry.title.clone())).or_insert(vec![entry.title.clone()]);
+        books_map
+            .entry(year_month)
+            .and_modify(|v| v.push(entry.title.clone()))
+            .or_insert(vec![entry.title.clone()]);
     }
 
     tracing::trace!("Creating output string");
@@ -395,7 +398,9 @@ async fn update_live_thread(
                 tracing::trace!("delete 100 messages");
                 let get_messages = GetMessages::new().limit(100);
                 let messages = channel.messages(Arc::clone(&ctx), get_messages).await?;
-                if !messages.is_empty() && let Err(e) = channel.delete_messages(Arc::clone(&ctx), messages).await {
+                if !messages.is_empty()
+                    && let Err(e) = channel.delete_messages(Arc::clone(&ctx), messages).await
+                {
                     tracing::error!("Failed to delete messages: {}", e);
                     tracing::warn!("Message history may not be deleted, continuing anyway");
                 }
@@ -405,9 +410,10 @@ async fn update_live_thread(
                 let yearly = db.yearly_leaderboard().await?;
                 let yearly = make_leaderboard(&yearly);
                 let monthly = make_leaderboard(&monthly);
+                let now: DateTime<Utc> = chrono::Utc::now() - std::time::Duration::from_hours(16);
 
-                let year = chrono::Utc::now().format("%Y").to_string();
-                let month_year = chrono::Utc::now().format("%B %Y").to_string();
+                let year = now.format("%Y").to_string();
+                let month_year = now.format("%B %Y").to_string();
 
                 msg = Some(
                     channel
@@ -504,6 +510,7 @@ fn check_win_thread(ctx: Arc<serenity::prelude::Context>) {
                             .unwrap()
                             .clone()
                     };
+                    tracing::info!("Sending monthly win message");
                     let msg = CreateMessage::new().content("@everyone").embed(
                         CreateEmbed::new()
                             .title(format!(":trophy: {} {} Winner", month, year))
@@ -536,6 +543,7 @@ fn check_win_thread(ctx: Arc<serenity::prelude::Context>) {
                             .unwrap()
                             .clone()
                     };
+                    tracing::info!("Sending yearly win message");
                     let msg = CreateMessage::new().content("@everyone").embeds(vec![
                         CreateEmbed::new()
                             .title(format!(":trophy: {} {}  Winner", month, year))
@@ -553,8 +561,21 @@ fn check_win_thread(ctx: Arc<serenity::prelude::Context>) {
                     channel.send_message(&ctx, msg).await.unwrap();
                 }
             }
-            tracing::trace!("End win check loop");
-            tokio::time::sleep(std::time::Duration::from_hours(24)).await;
+            tracing::trace!("Sleeping until next win time");
+            let next_win_time: DateTime<Utc> = *NEXT_MONTHLY_WIN
+                .get_or_init(|| Mutex::new(Utc::now()))
+                .lock()
+                .await;
+            let now = Utc::now();
+            let Ok(time_until) = (next_win_time - now).to_std() else {
+                tracing::error!(
+                    "Failed to create a std::time::Duration out of the chrono::TimeDelta"
+                );
+                tracing::error!("Defaulting to waiting 24 hours");
+                tokio::time::sleep(std::time::Duration::from_hours(24)).await;
+                continue;
+            };
+            tokio::time::sleep(time_until).await;
         }
     });
 }
@@ -587,7 +608,7 @@ async fn init_next_win_times() -> Result<()> {
     // Wins occur at:
     //     8 am pacific
     //     9 am mountain
-    let time_delta = TimeDelta::hours(16); 
+    let time_delta = TimeDelta::hours(16);
 
     *monthly_lock = Utc
         .with_ymd_and_hms(monthly_year, month.number_from_month(), 1, 0, 0, 0)
@@ -617,7 +638,7 @@ fn setup_logging() -> Result<()> {
     #[cfg(debug_assertions)]
     let e_filter = tracing_subscriber::EnvFilter::new("info,bookshelf_bot=trace");
     #[cfg(not(debug_assertions))]
-    let e_filter = tracing_subscriber::EnvFilter::new("info");
+    let e_filter = tracing_subscriber::EnvFilter::new("warn,bookshelf_bot=info");
 
     let stderr_layer = tracing_subscriber::fmt::layer()
         .pretty()

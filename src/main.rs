@@ -59,14 +59,17 @@ struct Data {}
 type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[poise::command(slash_command)]
-async fn count(ctx: Context<'_>) -> Result<()> {
+async fn count(
+    ctx: Context<'_>,
+    #[description = "Username"] username: Option<String>,
+) -> Result<()> {
     tracing::info!("{} used `{}`", ctx.author().name, ctx.command().name);
     tracing::trace!("Counting books");
     tracing::trace!("Acquiring mutex");
     let mut db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
-    let username = ctx.author();
+    let username = username.unwrap_or(ctx.author().name.clone());
     tracing::trace!("Getting count");
-    let count = db.count_books_read(&username.name).await?;
+    let count = db.count_books_read(&username).await?;
     ctx.send(poise::CreateReply::default().content(format!("You have read {} books.", count)))
         .await?;
     Ok(())
@@ -82,14 +85,16 @@ struct YearMonth {
 async fn history(
     ctx: Context<'_>,
     #[description = "Time Period"] time_period: Option<Since>,
+    #[description = "Username"] username: Option<String>,
 ) -> Result<()> {
     tracing::info!("{} used `{}`", ctx.author().name, ctx.invocation_string());
     tracing::trace!("Listing all read books for {}", ctx.author().name);
     tracing::trace!("Acquiring Mutex");
     let mut db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
+    let username = username.unwrap_or(ctx.author().name.clone());
     tracing::trace!("Getting list");
     let list = db
-        .books_read_by(&ctx.author().name, time_period.unwrap_or(Since::Forever))
+        .books_read_by(&username, time_period.unwrap_or(Since::Forever))
         .await?;
     tracing::trace!("{:?}", list);
     let mut content = String::new();

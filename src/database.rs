@@ -331,7 +331,7 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        leaderboard.sort_by(|a, b| b.books_read.cmp(&a.books_read));
+        leaderboard.sort_by_key(|b| std::cmp::Reverse(b.books_read));
 
         Ok(leaderboard)
     }
@@ -352,7 +352,8 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        leaderboard.sort_by(|a, b| b.books_read.cmp(&a.books_read));
+        leaderboard.sort_by_key(|b| std::cmp::Reverse(b.books_read));
+
 
         Ok(leaderboard)
     }

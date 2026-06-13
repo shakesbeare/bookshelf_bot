@@ -10,6 +10,9 @@ env.CARGO_TERM_COLOR = "always"
 
 [jobs.watch]
 command = ["cargo", "r"]
+needs_stdout = true
+background = false
+on_change_strategy = "kill_then_restart"
 
 [jobs.check]
 command = ["cargo", "check"]

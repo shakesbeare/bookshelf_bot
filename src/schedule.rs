@@ -198,6 +198,7 @@ fn check_win_thread(ctx: Arc<serenity::prelude::Context>) {
                 Err(e) => {
                     tracing::error!("An error occurred while checking if it was time to win.");
                     tracing::error!("{}", e);
+                    sleep_until_next_win().await;
                     continue;
                 }
             };
@@ -280,23 +281,25 @@ fn check_win_thread(ctx: Arc<serenity::prelude::Context>) {
                     }
                 }
             }
-            tracing::trace!("Sleeping until next win time");
-            let next_win_time: DateTime<Utc> = *NEXT_MONTHLY_WIN
-                .get_or_init(|| Mutex::new(Utc::now()))
-                .lock()
-                .await;
-            let now = Utc::now();
-            let Ok(time_until) = (next_win_time - now).to_std() else {
-                tracing::error!(
-                    "Failed to create a std::time::Duration out of the chrono::TimeDelta"
-                );
-                tracing::error!("Defaulting to waiting 24 hours");
-                tokio::time::sleep(std::time::Duration::from_hours(24)).await;
-                continue;
-            };
-            tokio::time::sleep(time_until).await;
+            sleep_until_next_win().await;
         }
     });
+}
+
+async fn sleep_until_next_win() {
+    tracing::trace!("Sleeping until next win time");
+    let next_win_time: DateTime<Utc> = *NEXT_MONTHLY_WIN
+        .get_or_init(|| Mutex::new(Utc::now()))
+        .lock()
+        .await;
+    let now = Utc::now();
+    let Ok(time_until) = (next_win_time - now).to_std() else {
+        tracing::error!("Failed to create a std::time::Duration out of the chrono::TimeDelta");
+        tracing::error!("Defaulting to waiting 24 hours");
+        tokio::time::sleep(std::time::Duration::from_hours(24)).await;
+        return;
+    };
+    tokio::time::sleep(time_until).await;
 }
 
 async fn check_time_and_assign_wins(_ctx: Arc<serenity::prelude::Context>) -> Result<WinState> {
@@ -401,8 +404,8 @@ async fn check_time_and_assign_wins(_ctx: Arc<serenity::prelude::Context>) -> Re
 
 async fn init_next_win_times() -> Result<()> {
     let now = Utc::now();
-    let mut month: Month = Month::try_from(u8::try_from(now.month())?)?.succ();
-    let mut year: i32 = now.year() + 1;
+    let month: Month = Month::try_from(u8::try_from(now.month())?)?.succ();
+    let year: i32 = now.year() + 1;
     let monthly_year = if month == Month::January {
         year
     } else {

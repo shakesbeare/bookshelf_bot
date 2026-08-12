@@ -144,14 +144,12 @@ pub async fn read(
 ) -> Result<()> {
     let mut rx = INTERACTION_WAKER.get().unwrap().subscribe();
     tracing::info!("{} used `{:?}`", ctx.author().name, ctx.invocation_string());
-    tracing::trace!("Adding book {} to user {}", title, ctx.author());
     tracing::trace!("Acquiring mutex");
     let mut db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
     let username = ctx.author();
-    tracing::trace!("Updating database");
 
-    if let Ok(books) = db.books_read_by(&username.name, Since::Forever).await {
-        let books: Vec<&str> = books.iter().map(|b| b.title.as_str()).collect();
+    if let Ok(books) = db.all_books().await {
+        let books: Vec<&str> = books.iter().map(|b| b.0.as_str()).collect();
         let mut matcher = Matcher::new(Config::DEFAULT);
         let matches: Vec<&str> =
             Pattern::parse(title.as_str(), CaseMatching::Ignore, Normalization::Smart)
@@ -161,20 +159,25 @@ pub async fn read(
                 .collect();
         if !matches.is_empty() {
             let mut title_list = String::new();
+            let mut first = true;
             for m in matches {
-                title_list.push_str(&format!("- *{m}*\n"));
+                title_list.push_str(&format!("- *{}* ", m.trim_end()));
+                if !first {
+                    title_list.push('\n');
+                }
+                first = false;
             }
             let continue_uuid = Uuid::new_v4();
             let cancel_uuid = Uuid::new_v4();
             let reply = poise::CreateReply::default()
                 .content(format!(
-                    "Book title was similar to the following entries. Do you still want to proceed?\n{}",
+                    "Book title was similar to the following books. Do you still want to proceed?\n{}",
                     title_list
                 ))
                 .ephemeral(true)
                 .components(vec![CreateActionRow::Buttons(vec![
-                    CreateButton::new(format!("{continue_uuid}")).label("Yes, enter the book anyway"),
-                    CreateButton::new(format!("{cancel_uuid}")).label("No, don't enter the book").style(ButtonStyle::Danger),
+                    CreateButton::new(format!("{continue_uuid}")).label(format!("Yes, enter the book \"{}\"", &title)),
+                    CreateButton::new(format!("{cancel_uuid}")).label("No, I want to try again").style(ButtonStyle::Danger),
                 ])]);
             ctx.send(reply).await?;
             loop {
@@ -205,6 +208,8 @@ pub async fn read(
         tracing::error!("Failed to acquire book history to check for typos, skipping fuzzy match");
     }
 
+    tracing::trace!("Adding book {} to user {}", title, ctx.author());
+    tracing::trace!("Updating database");
     let Ok(count) = db.user_read_book(&username.name, &title).await else {
         tracing::trace!("User already read book");
         if let Err(e) = ctx

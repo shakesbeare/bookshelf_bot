@@ -3,7 +3,9 @@ use anyhow::Result;
 use chrono::prelude::*;
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 
-#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, poise::ChoiceParameter)]
+#[derive(
+    Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, poise::ChoiceParameter,
+)]
 pub enum Since {
     Monthly,
     Yearly,
@@ -17,6 +19,8 @@ pub struct BookRead {
     pub datetime: String,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct Book(pub String);
 
 #[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct LeaderboardEntry {
@@ -246,6 +250,22 @@ impl Database {
         Ok(count)
     }
 
+    pub async fn all_books(&self) -> Result<Vec<Book>> {
+        let list: Vec<Book> = sqlx::query_as::<_, Book>(
+            format!(
+                r#"
+            SELECT title FROM books;
+            "#)
+            .as_str(),
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let list = list.to_vec();
+
+        Ok(list)
+    }
+
     /// Returns a Vec of the titles of books read by thegiven user
     pub async fn books_read_by<S: AsRef<str>>(
         &mut self,
@@ -254,8 +274,12 @@ impl Database {
     ) -> Result<Vec<BookRead>> {
         let user_id = self.ensure_user(&username).await?;
         let since_clause = match since {
-            Since::Monthly => "AND date(user_books_read.datetime) >= date('now', '-24 hours', 'start of month', '+16 hours')",
-            Since::Yearly => "AND date(user_books_read.datetime) >= date('now', '-24 hours', 'start of year', '+16 hours')",
+            Since::Monthly => {
+                "AND date(user_books_read.datetime) >= date('now', '-24 hours', 'start of month', '+16 hours')"
+            }
+            Since::Yearly => {
+                "AND date(user_books_read.datetime) >= date('now', '-24 hours', 'start of year', '+16 hours')"
+            }
             Since::Forever => "",
         };
         let list: Vec<BookRead> = sqlx::query_as::<_, BookRead>(
@@ -353,7 +377,6 @@ impl Database {
         .await?;
 
         leaderboard.sort_by_key(|b| std::cmp::Reverse(b.books_read));
-
 
         Ok(leaderboard)
     }

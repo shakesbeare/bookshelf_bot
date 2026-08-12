@@ -250,12 +250,13 @@ impl Database {
         Ok(count)
     }
 
+    /// Returns a list of all books in the database
     pub async fn all_books(&self) -> Result<Vec<Book>> {
         let list: Vec<Book> = sqlx::query_as::<_, Book>(
-            format!(
-                r#"
+            r#"
             SELECT title FROM books;
-            "#)
+            "#
+            .to_string()
             .as_str(),
         )
         .fetch_all(&self.pool)
@@ -337,6 +338,22 @@ impl Database {
         .into_inner();
 
         Ok(count)
+    }
+
+    /// Removes all books with no readers in the from the database
+    pub async fn cleanup_unread_books(&mut self) -> Result<()> {
+        let books = self.all_books().await?;
+        for book in books {
+            let count = self.count_users_read(&book.0).await?;
+            if count < 1 {
+                sqlx::query(r#"DELETE FROM BOOKS WHERE title = $1"#)
+                    .bind(book.0)
+                    .execute(&self.pool)
+                    .await?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Returns the leaderboard for this month, sorted descending

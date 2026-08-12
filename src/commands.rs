@@ -134,6 +134,9 @@ pub async fn unread(
     CHAN_WRITER.get().unwrap().send(()).await?;
     tracing::trace!("Done");
 
+    tracing::trace!("Cleanup unread books");
+    db.cleanup_unread_books().await?;
+
     Ok(())
 }
 

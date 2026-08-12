@@ -5,6 +5,8 @@ pub mod schedule;
 use anyhow::Error;
 use chrono::DateTime;
 use chrono::Utc;
+use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
 
@@ -14,10 +16,17 @@ use crate::database::LeaderboardEntry;
 pub static DB: OnceLock<Mutex<Database>> = OnceLock::new();
 pub static NEXT_MONTHLY_WIN: OnceLock<Mutex<DateTime<Utc>>> = OnceLock::new();
 pub static NEXT_YEARLY_WIN: OnceLock<Mutex<DateTime<Utc>>> = OnceLock::new();
-pub static CHAN_WRITER: OnceLock<tokio::sync::mpsc::Sender<()>> = OnceLock::new();
+pub static CHAN_WRITER: OnceLock<mpsc::Sender<()>> = OnceLock::new();
+pub static INTERACTION_WAKER: OnceLock<broadcast::Sender<InteractionWaker>> = OnceLock::new();
+pub static INTERACTION_WAITER: OnceLock<broadcast::Receiver<InteractionWaker>> = OnceLock::new();
 
 pub struct Data {}
 type Context<'a> = poise::Context<'a, Data, Error>;
+
+#[derive(Debug, Clone)]
+pub struct InteractionWaker {
+    id: String,
+}
 
 // Automatically keep monthly and yearly leaderboards
 // Simple command to mark a book as completed
@@ -65,24 +74,4 @@ pub fn make_leaderboard(entries: &[LeaderboardEntry]) -> String {
         ));
     }
     out
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum CustomInteraction {
-    ReadSimilarBookContinue { title: String },
-    ReadSimilarBookCancel,
-}
-
-impl CustomInteraction {
-    pub fn try_parse<S: AsRef<str>>(value: S) -> Option<Self> {
-        let input = value.as_ref();
-        if input.starts_with("ReadSimilarBookContinue") {
-            let (_, data) = input.split_once(":").unwrap();
-            Some(Self::ReadSimilarBookContinue {
-                title: data.to_string(),
-            })
-        } else {
-            None
-        }
-    }
 }

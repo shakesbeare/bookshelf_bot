@@ -20,10 +20,14 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tokio::sync::Mutex;
+use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 
 use crate::CHAN_WRITER;
-use crate::CustomInteraction;
 use crate::DB;
+use crate::INTERACTION_WAITER;
+use crate::INTERACTION_WAKER;
+use crate::InteractionWaker;
 use crate::NEXT_MONTHLY_WIN;
 use crate::NEXT_YEARLY_WIN;
 use crate::WinState;
@@ -41,8 +45,12 @@ impl EventHandler for WinChecker {
     async fn cache_ready(&self, ctx: serenity::prelude::Context, _guilds: Vec<GuildId>) {
         let ctx = Arc::new(ctx);
         tracing::trace!("Setting up live leaderboard channel");
-        let (tx, rx) = tokio::sync::mpsc::channel::<()>(100);
+        let (tx, rx) = mpsc::channel::<()>(100);
         CHAN_WRITER.get_or_init(|| tx);
+
+        let (int_tx, int_rx) = broadcast::channel::<InteractionWaker>(20);
+        INTERACTION_WAKER.get_or_init(|| int_tx);
+        INTERACTION_WAITER.get_or_init(|| int_rx);
 
         if !self.is_loop_running.load(Ordering::Relaxed) {
             let ctx = Arc::clone(&ctx);
@@ -59,63 +67,21 @@ impl EventHandler for WinChecker {
 
     async fn interaction_create(&self, ctx: serenity::prelude::Context, interaction: Interaction) {
         match interaction {
-            Interaction::Component(component_interaction) => {
+            Interaction::Component(interaction) => {
                 let cache_http = (ctx.cache().unwrap(), ctx.http());
-                _ = component_interaction.defer_ephemeral(cache_http).await;
-                tracing::info!("User interaction");
-                let Some(custom_interaction) =
-                    CustomInteraction::try_parse(component_interaction.data.custom_id)
-                else {
-                    tracing::error!("Failed to parse custom interaction");
-                    component_interaction.create_response(
+                let tx = INTERACTION_WAKER.get().unwrap().clone();
+                tx.send(InteractionWaker {
+                    id: interaction.data.custom_id.clone(),
+                })
+                .unwrap();
+                _ = interaction
+                    .create_response(
                         cache_http,
-                        CreateInteractionResponse::Message(
-                            CreateInteractionResponseMessage::default()
-                                .content("Something went wrong"),
+                        CreateInteractionResponse::UpdateMessage(
+                            CreateInteractionResponseMessage::default().components(vec![]),
                         ),
-                    );
-                    return;
-                };
-
-                match custom_interaction {
-                    CustomInteraction::ReadSimilarBookContinue { title } => {
-                        let db = DB.get().unwrap().lock().await;
-                        let username = component_interaction.user;
-                        let Ok(count) = db.user_read_book(&username.name, &title).await else {
-                            tracing::trace!("User already read book");
-                            if let Err(e) = ctx
-                                .send(
-                                    poise::CreateReply::default()
-                                        .content(format!("You have already read *{}*!", title))
-                                        .ephemeral(true),
-                                )
-                                .await
-                            {
-                                tracing::error!("An error occurred while trying to reply: \n{}", e);
-                                tracing::error!(
-                                    "Possibly due to trying to reply to a command which has timed out. The command otherwise executed successfully"
-                                );
-                                _ = ctx.defer_ephemeral().await;
-                                return Ok(());
-                            };
-                            return Ok(());
-                        };
-                        tracing::trace!("Responding to user");
-                        ctx.send(
-                            poise::CreateReply::default()
-                                .content(format!(
-                                    "You have marked *{}* as read! You have read {} books total",
-                                    title, count
-                                ))
-                                .ephemeral(true),
-                        )
-                        .await?;
-                        tracing::trace!("Alerting live leaderboard to update");
-                        CHAN_WRITER.get().unwrap().send(()).await?;
-                        tracing::trace!("Done");
-                    }
-                    CustomInteraction::ReadSimilarBookCancel => {}
-                }
+                    )
+                    .await;
             }
             _ => tracing::warn!("Used an interaction that was not implemented"),
         }

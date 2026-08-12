@@ -160,44 +160,23 @@ pub async fn read(
                 .map(|m| m.0)
                 .collect();
         if !matches.is_empty() {
-            let mut title_list = String::new();
-            for m in matches {
-                title_list.push_str(&format!("- *{m}*\n"));
-            }
-            let continue_uuid = Uuid::new_v4();
-            let cancel_uuid = Uuid::new_v4();
+            let uuid = Uuid::new_v4();
             let reply = poise::CreateReply::default()
                 .content(format!(
-                    "Book title was similar to the following entries. Do you still want to proceed?\n{}",
-                    title_list
+                    "Book title was similar to the following entries. Do you still want to proceed?\n{:?}",
+                    matches
                 ))
                 .ephemeral(true)
                 .components(vec![CreateActionRow::Buttons(vec![
-                    CreateButton::new(format!("{continue_uuid}")).label("Yes, enter the book anyway"),
-                    CreateButton::new(format!("{cancel_uuid}")).label("No, don't enter the book").style(ButtonStyle::Danger),
+                    CreateButton::new(format!("{uuid}")).label("Yes, enter the book anyway"),
+                    CreateButton::new(format!("{uuid}")).label("No, don't enter the book").style(ButtonStyle::Danger),
                 ])]);
             ctx.send(reply).await?;
             loop {
                 let response = rx.recv().await.unwrap();
-                if response.id == continue_uuid.to_string() {
-                    _ = ctx
-                        .send(
-                            poise::CreateReply::default()
-                                .content("Entering the book anyway")
-                                .ephemeral(true),
-                        )
-                        .await;
+                if response.id == uuid.to_string() {
                     // just proceed :)
                     break;
-                } else if response.id == cancel_uuid.to_string() {
-                    _ = ctx
-                        .send(
-                            poise::CreateReply::default()
-                                .content("Cancelling")
-                                .ephemeral(true),
-                        )
-                        .await;
-                    return Ok(());
                 }
             }
         }

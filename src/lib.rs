@@ -1,11 +1,11 @@
-pub mod database;
 pub mod commands;
+pub mod database;
 pub mod schedule;
 
-use std::sync::OnceLock;
 use anyhow::Error;
 use chrono::DateTime;
 use chrono::Utc;
+use std::sync::OnceLock;
 use tokio::sync::Mutex;
 
 use crate::database::Database;
@@ -18,7 +18,6 @@ pub static CHAN_WRITER: OnceLock<tokio::sync::mpsc::Sender<()>> = OnceLock::new(
 
 pub struct Data {}
 type Context<'a> = poise::Context<'a, Data, Error>;
-
 
 // Automatically keep monthly and yearly leaderboards
 // Simple command to mark a book as completed
@@ -66,4 +65,24 @@ pub fn make_leaderboard(entries: &[LeaderboardEntry]) -> String {
         ));
     }
     out
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum CustomInteraction {
+    ReadSimilarBookContinue { title: String },
+    ReadSimilarBookCancel,
+}
+
+impl CustomInteraction {
+    pub fn try_parse<S: AsRef<str>>(value: S) -> Option<Self> {
+        let input = value.as_ref();
+        if input.starts_with("ReadSimilarBookContinue") {
+            let (_, data) = input.split_once(":").unwrap();
+            Some(Self::ReadSimilarBookContinue {
+                title: data.to_string(),
+            })
+        } else {
+            None
+        }
+    }
 }

@@ -4,8 +4,16 @@ use crate::database::Since;
 use crate::make_leaderboard;
 use anyhow::Context as _;
 use anyhow::Result;
+use nucleo::Config;
+use nucleo::Matcher;
+use nucleo::pattern::CaseMatching;
+use nucleo::pattern::Normalization;
+use nucleo::pattern::Pattern;
 use poise::serenity_prelude as serenity;
 
+use ::serenity::all::ButtonStyle;
+use ::serenity::all::CreateActionRow;
+use ::serenity::all::CreateButton;
 use chrono::prelude::*;
 use std::collections::BTreeMap;
 
@@ -138,6 +146,34 @@ pub async fn read(
     let mut db = DB.get().context("Failed to acquire DB Mutex")?.lock().await;
     let username = ctx.author();
     tracing::trace!("Updating database");
+
+    if let Ok(books) = db.books_read_by(&username.name, Since::Forever).await {
+        let books: Vec<&str> = books.iter().map(|b| b.title.as_str()).collect();
+        let mut matcher = Matcher::new(Config::DEFAULT);
+        let matches: Vec<&str> =
+            Pattern::parse(title.as_str(), CaseMatching::Ignore, Normalization::Smart)
+                .match_list(books, &mut matcher)
+                .iter()
+                .map(|m| m.0)
+                .collect();
+        if !matches.is_empty() {
+            let reply = poise::CreateReply::default()
+                .content(format!(
+                    "Book title was similar to the following entries. Do you still want to proceed?\n{:?}",
+                    matches
+                ))
+                .ephemeral(true)
+                .components(vec![CreateActionRow::Buttons(vec![
+                    CreateButton::new(format!("ReadSimilarBookContinue:{}", title.as_str())).label("Yes, enter the book anyway"),
+                    CreateButton::new("ReadSimilarBookCancel").label("No, don't enter the book").style(ButtonStyle::Danger),
+                ])]);
+            ctx.send(reply).await?;
+            return Ok(());
+        }
+    } else {
+        tracing::error!("Failed to acquire book history to check for typos, skipping fuzzy match");
+    }
+
     let Ok(count) = db.user_read_book(&username.name, &title).await else {
         tracing::trace!("User already read book");
         if let Err(e) = ctx
@@ -152,6 +188,7 @@ pub async fn read(
             tracing::error!(
                 "Possibly due to trying to reply to a command which has timed out. The command otherwise executed successfully"
             );
+            _ = ctx.defer_ephemeral().await;
             return Ok(());
         };
         return Ok(());
@@ -211,3 +248,8 @@ pub async fn year(ctx: crate::Context<'_>) -> Result<()> {
 
     Ok(())
 }
+
+// #[poise::command(slash_command)]
+// pub async fn edit(ctx: crate::Context<'_>) -> Result<()> {
+//     Ok(())
+// }

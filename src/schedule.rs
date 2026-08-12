@@ -4,10 +4,13 @@ use chrono::TimeDelta;
 use poise::serenity_prelude as serenity;
 
 use ::serenity::all::CreateEmbed;
+use ::serenity::all::CreateInteractionResponse;
+use ::serenity::all::CreateInteractionResponseMessage;
 use ::serenity::all::CreateMessage;
 use ::serenity::all::EditMessage;
 use ::serenity::all::GetMessages;
 use ::serenity::all::GuildId;
+use ::serenity::all::Interaction;
 use ::serenity::all::Message;
 use ::serenity::async_trait;
 use serenity::prelude::*;
@@ -19,6 +22,7 @@ use std::sync::atomic::Ordering;
 use tokio::sync::Mutex;
 
 use crate::CHAN_WRITER;
+use crate::CustomInteraction;
 use crate::DB;
 use crate::NEXT_MONTHLY_WIN;
 use crate::NEXT_YEARLY_WIN;
@@ -50,6 +54,70 @@ impl EventHandler for WinChecker {
             tracing::trace!("Starting win checker thread");
             check_win_thread(ctx);
             self.is_loop_running.swap(true, Ordering::Relaxed);
+        }
+    }
+
+    async fn interaction_create(&self, ctx: serenity::prelude::Context, interaction: Interaction) {
+        match interaction {
+            Interaction::Component(component_interaction) => {
+                let cache_http = (ctx.cache().unwrap(), ctx.http());
+                _ = component_interaction.defer_ephemeral(cache_http).await;
+                tracing::info!("User interaction");
+                let Some(custom_interaction) =
+                    CustomInteraction::try_parse(component_interaction.data.custom_id)
+                else {
+                    tracing::error!("Failed to parse custom interaction");
+                    component_interaction.create_response(
+                        cache_http,
+                        CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::default()
+                                .content("Something went wrong"),
+                        ),
+                    );
+                    return;
+                };
+
+                match custom_interaction {
+                    CustomInteraction::ReadSimilarBookContinue { title } => {
+                        let db = DB.get().unwrap().lock().await;
+                        let username = component_interaction.user;
+                        let Ok(count) = db.user_read_book(&username.name, &title).await else {
+                            tracing::trace!("User already read book");
+                            if let Err(e) = ctx
+                                .send(
+                                    poise::CreateReply::default()
+                                        .content(format!("You have already read *{}*!", title))
+                                        .ephemeral(true),
+                                )
+                                .await
+                            {
+                                tracing::error!("An error occurred while trying to reply: \n{}", e);
+                                tracing::error!(
+                                    "Possibly due to trying to reply to a command which has timed out. The command otherwise executed successfully"
+                                );
+                                _ = ctx.defer_ephemeral().await;
+                                return Ok(());
+                            };
+                            return Ok(());
+                        };
+                        tracing::trace!("Responding to user");
+                        ctx.send(
+                            poise::CreateReply::default()
+                                .content(format!(
+                                    "You have marked *{}* as read! You have read {} books total",
+                                    title, count
+                                ))
+                                .ephemeral(true),
+                        )
+                        .await?;
+                        tracing::trace!("Alerting live leaderboard to update");
+                        CHAN_WRITER.get().unwrap().send(()).await?;
+                        tracing::trace!("Done");
+                    }
+                    CustomInteraction::ReadSimilarBookCancel => {}
+                }
+            }
+            _ => tracing::warn!("Used an interaction that was not implemented"),
         }
     }
 }

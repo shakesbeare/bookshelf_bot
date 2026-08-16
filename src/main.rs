@@ -55,7 +55,8 @@ async fn main() -> anyhow::Result<()> {
         }));
     }
 
-    let db = Database::try_init().await?;
+    let mut db = Database::try_init().await?;
+    db.title_case_all_books().await?;
     DB.get_or_init(|| Mutex::new(db));
 
     let token = std::env::var("DISCORD_TOKEN")?;

@@ -3,8 +3,17 @@ use anyhow::Result;
 use chrono::prelude::*;
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 
+use crate::TitleCase as _;
+
 #[derive(
-    Debug, Default, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, poise::ChoiceParameter,
+    Debug,
+    Default,
+    Clone,
+    Eq,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    poise::ChoiceParameter,
 )]
 pub enum Since {
     #[default]
@@ -289,6 +298,30 @@ impl Database {
         Ok(book)
     }
 
+/// Update all books in the database to use title case
+    pub async fn title_case_all_books(&mut self) -> Result<()> {
+        let books = self.all_books().await?;
+        for book in books {
+            let new_title = book.0.title_case();
+            self.change_title(book.0, new_title).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Change the title of a book entry
+    /// Warning: This will change the read history of anyone who has read this book. This should
+    /// only be used to fix typos or formatting
+    pub async fn change_title<S: AsRef<str>, A: AsRef<str>>(&mut self, title: S, new_title: A) -> Result<()> {
+        let book_id = self.ensure_book(title.as_ref()).await?;
+        sqlx::query(r#"UPDATE books SET title = $1 WHERE id = $2"#)
+            .bind(new_title.as_ref())
+            .bind(book_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     /// Updates a book read entry
     pub async fn update_book_read(&mut self, book_read: BookRead, new: BookRead) -> Result<()> {
         let user_id = self.ensure_user(&book_read.username).await?;
@@ -314,7 +347,6 @@ impl Database {
             .bind(book_id)
             .execute(&self.pool)
             .await?;
-
         } else {
             sqlx::query(
                 r#"UPDATE user_books_read
@@ -345,9 +377,7 @@ impl Database {
             Since::Year => {
                 "AND date(user_books_read.datetime) >= date('now', '-24 hours', 'start of year', '+16 hours')"
             }
-            Since::Recent => {
-                "AND date(user_books_read.datetime) >= date('now', '-60 days')"
-            }
+            Since::Recent => "AND date(user_books_read.datetime) >= date('now', '-60 days')",
             Since::Forever => "",
         };
         let list: Vec<BookRead> = sqlx::query_as::<_, BookRead>(

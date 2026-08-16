@@ -1,6 +1,7 @@
 use crate::CHAN_WRITER;
 use crate::DB;
 use crate::INTERACTION_WAKER;
+use crate::TitleCase as _;
 use crate::database::BookRead;
 use crate::database::Since;
 use crate::make_leaderboard;
@@ -216,6 +217,7 @@ pub async fn read(
         tracing::error!("Failed to acquire book history to check for typos, skipping fuzzy match");
     }
 
+    let title = title.title_case();
     tracing::trace!("Adding book {} to user {}", title, ctx.author());
     tracing::trace!("Updating database");
     let Ok(count) = db.user_read_book(&username.name, &title).await else {

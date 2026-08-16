@@ -5,10 +5,10 @@ pub mod schedule;
 use anyhow::Error;
 use chrono::DateTime;
 use chrono::Utc;
-use tokio::sync::broadcast;
-use tokio::sync::mpsc;
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
+use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 
 use crate::database::Database;
 use crate::database::LeaderboardEntry;
@@ -74,4 +74,97 @@ pub fn make_leaderboard(entries: &[LeaderboardEntry]) -> String {
         ));
     }
     out
+}
+
+pub trait TitleCase {
+    /// Allocates a new string which is the title-cased version of the input string according to the
+    /// APA style guide
+    fn title_case(&self) -> String;
+}
+
+impl<S: AsRef<str>> TitleCase for S {
+    fn title_case(&self) -> String {
+        let mut words: Vec<&str> = Vec::new();
+        let input = self.as_ref();
+        let mut start = 0;
+        let mut i = 0;
+        for c in input.chars() {
+            if c.is_whitespace() || !c.is_alphabetic() {
+                words.push(&input[start..i]);
+                start = i;
+            }
+            i += 1;
+        }
+        words.push(&input[start..i]);
+
+        let mut out = String::new();
+        let mut first = true;
+        let mut follows_colon = false;
+        for word in words {
+            let word = word.trim();
+            if !first && word.chars().all(|b| b.is_alphabetic()) {
+                out.push(' ');
+            }
+            if first || follows_colon || !word.is_minor() {
+                let mut chars = word.chars();
+                let Some(hd) = chars.next() else {
+                    continue;
+                };
+                let hd = hd.to_uppercase();
+                let tail: String = chars.collect();
+                out.push_str(&format!("{}{}", hd, tail));
+            } else {
+                out.push_str(&word.to_lowercase());
+            }
+
+            first = false;
+            follows_colon = word == ":";
+        }
+
+        out
+    }
+}
+
+pub trait IsMinor {
+    fn is_minor(&self) -> bool;
+}
+
+impl<S: AsRef<str>> IsMinor for S {
+    fn is_minor(&self) -> bool {
+        let s = self.as_ref();
+        matches!(
+            s,
+            "and"
+                | "but"
+                | "or"
+                | "for"
+                | "nor"
+                | "the"
+                | "a"
+                | "an"
+                | "in"
+                | "on"
+                | "at"
+                | "by"
+                | "off"
+                | "per"
+                | "up"
+                | "via"
+                | "if"
+                | "so"
+                | "yet"
+        )
+    }
+}
+
+mod tests {
+    use super::*;
+
+    #[test]
+    fn title_case() {
+        let title = "the great in the escape: a great on the sea in blabbity off a dock";
+        let expected = "The Great in the Escape: A Great on the Sea in Blabbity off a Dock";
+        let actual = title.title_case();
+        assert_eq!(actual, expected);
+    }
 }

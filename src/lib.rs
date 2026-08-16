@@ -105,7 +105,7 @@ impl<S: AsRef<str>> TitleCase for S {
         let mut follows_colon = false;
         for word in words {
             let word = word.trim();
-            if !first && word.chars().all(|b| b.is_alphabetic()) {
+            if !first && word.chars().next().unwrap_or(' ').is_alphabetic() {
                 out.push(' ');
             }
             if first || follows_colon || !word.is_minor() {
@@ -157,6 +157,7 @@ impl<S: AsRef<str>> IsMinor for S {
                 | "so"
                 | "yet"
                 | "is"
+                | "of"
         )
     }
 }
@@ -167,7 +168,14 @@ pub trait Normalize {
 
 impl<S: AsRef<str>> Normalize for S {
     fn normalize(&self) -> String {
-        self.as_ref().to_owned().replace("‘", "'").replace("’", "'").replace("“", "\"").replace("”", "\"")
+        self.as_ref()
+            .to_owned()
+            .replace("‘", "'")
+            .replace("’", "'")
+            .replace("“", "\"")
+            .replace("”", "\"")
+            .replace("\n", " ")
+            .replace("\r", " ")
     }
 }
 
@@ -195,6 +203,22 @@ mod tests {
     fn contractions_dont_break_words() {
         let title = "einstein's dream";
         let expected = "Einstein's Dream";
+        let actual = title.title_case();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn weird_spaces() {
+        let title = "The Pluto Files: The Rise and Fall of America's Favorite Planet";
+        let expected = "The Pluto Files: The Rise and Fall of America's Favorite Planet";
+        let actual = title.title_case();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn weird_spaces_2() {
+        let title = "You are Not Alone: Michael:\nThrough a Brother's Eyes";
+        let expected = "You Are Not Alone: Michael: Through a Brother's Eyes";
         let actual = title.title_case();
         assert_eq!(actual, expected);
     }

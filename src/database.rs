@@ -4,11 +4,13 @@ use chrono::prelude::*;
 use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
 
 #[derive(
-    Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, poise::ChoiceParameter,
+    Debug, Default, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, poise::ChoiceParameter,
 )]
 pub enum Since {
-    Monthly,
-    Yearly,
+    #[default]
+    Recent,
+    Month,
+    Year,
     Forever,
 }
 
@@ -337,11 +339,14 @@ impl Database {
     ) -> Result<Vec<BookRead>> {
         let user_id = self.ensure_user(&username).await?;
         let since_clause = match since {
-            Since::Monthly => {
+            Since::Month => {
                 "AND date(user_books_read.datetime) >= date('now', '-24 hours', 'start of month', '+16 hours')"
             }
-            Since::Yearly => {
+            Since::Year => {
                 "AND date(user_books_read.datetime) >= date('now', '-24 hours', 'start of year', '+16 hours')"
+            }
+            Since::Recent => {
+                "AND date(user_books_read.datetime) >= date('now', '-60 days')"
             }
             Since::Forever => "",
         };

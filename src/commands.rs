@@ -57,7 +57,7 @@ pub async fn history(
     let username = username.unwrap_or(ctx.author().name.clone());
     tracing::trace!("Getting list");
     let list = db
-        .books_read_by(&username, time_period.unwrap_or(Since::Forever))
+        .books_read_by(&username, time_period.unwrap_or_default())
         .await?;
     tracing::trace!("{:?}", list);
     let mut content = String::new();
@@ -66,7 +66,10 @@ pub async fn history(
     for entry in list {
         tracing::trace!("--Parsing datetime");
         tracing::trace!("{}", &entry.datetime);
-        let datetime = NaiveDateTime::parse_from_str(&entry.datetime, "%Y-%m-%d %H:%M:%S")?;
+        let datetime = NaiveDateTime::parse_from_str(
+            entry.datetime.trim_end().trim_start(),
+            "%Y-%m-%d %H:%M:%S",
+        )?;
         let datetime = DateTime::<Utc>::from_naive_utc_and_offset(datetime, Utc);
         let year_month = YearMonth {
             year: datetime.year(),

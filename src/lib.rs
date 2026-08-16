@@ -156,6 +156,7 @@ impl<S: AsRef<str>> IsMinor for S {
                 | "if"
                 | "so"
                 | "yet"
+                | "is"
         )
     }
 }
@@ -187,6 +188,14 @@ mod tests {
         let title = "Einstein’s Dream";
         let expected = "Einstein's Dream";
         let actual = title.normalize();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn contractions_dont_break_words() {
+        let title = "einstein's dream";
+        let expected = "Einstein's Dream";
+        let actual = title.title_case();
         assert_eq!(actual, expected);
     }
 }

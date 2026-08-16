@@ -298,12 +298,15 @@ impl Database {
         Ok(book)
     }
 
-/// Update all books in the database to use title case
+    /// Update all books in the database to use title case
     pub async fn title_case_all_books(&mut self) -> Result<()> {
         let books = self.all_books().await?;
         for book in books {
             let new_title = book.0.title_case();
-            self.change_title(book.0, new_title).await?;
+            if let Err(e) = self.change_title(&book.0, new_title).await {
+                tracing::error!("Failed to change title of {}: {e}", book.0);
+                continue;
+            }
         }
 
         Ok(())
@@ -312,7 +315,11 @@ impl Database {
     /// Change the title of a book entry
     /// Warning: This will change the read history of anyone who has read this book. This should
     /// only be used to fix typos or formatting
-    pub async fn change_title<S: AsRef<str>, A: AsRef<str>>(&mut self, title: S, new_title: A) -> Result<()> {
+    pub async fn change_title<S: AsRef<str>, A: AsRef<str>>(
+        &mut self,
+        title: S,
+        new_title: A,
+    ) -> Result<()> {
         let book_id = self.ensure_book(title.as_ref()).await?;
         sqlx::query(r#"UPDATE books SET title = $1 WHERE id = $2"#)
             .bind(new_title.as_ref())

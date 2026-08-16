@@ -108,14 +108,16 @@ impl<S: AsRef<str>> TitleCase for S {
             if !first && word.chars().next().unwrap_or(' ').is_alphanumeric() {
                 out.push(' ');
             }
-            if first || follows_colon || !word.is_minor() {
+            if word.chars().all(|c| c.is_ascii_uppercase()) {
+                out.push_str(word);
+            } else if first || follows_colon || !word.is_minor() {
                 let mut chars = word.chars();
                 let Some(hd) = chars.next() else {
                     continue;
                 };
                 let hd = hd.to_uppercase();
                 let tail: String = chars.collect();
-                out.push_str(&format!("{}{}", hd, tail));
+                out.push_str(&format!("{}{}", hd, tail.to_lowercase()));
             } else {
                 out.push_str(&word.to_lowercase());
             }
@@ -134,9 +136,9 @@ pub trait IsMinor {
 
 impl<S: AsRef<str>> IsMinor for S {
     fn is_minor(&self) -> bool {
-        let s = self.as_ref();
+        let s = self.as_ref().to_lowercase();
         matches!(
-            s,
+            s.as_str(),
             "and"
                 | "but"
                 | "or"
@@ -177,6 +179,10 @@ impl<S: AsRef<str>> Normalize for S {
             .replace("\n", " ")
             .replace("\r", " ")
     }
+}
+
+pub trait IsCaps {
+    fn is_capital(&self) -> bool;
 }
 
 #[cfg(test)]
@@ -227,6 +233,22 @@ mod tests {
     fn numbers() {
         let title = "fahrenheit 451";
         let expected = "Fahrenheit 451";
+        let actual = title.title_case();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn all_caps() {
+        let title = "ALL TO THE CAPS";
+        let expected = "ALL TO THE CAPS";
+        let actual = title.title_case();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn inconsistent() {
+        let title = "Death Of the author";
+        let expected = "Death of the Author";
         let actual = title.title_case();
         assert_eq!(actual, expected);
     }

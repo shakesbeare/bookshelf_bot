@@ -72,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
             })
         })
         .options(poise::FrameworkOptions {
-            commands: vec![read(), unread(), count(), month(), year(), history()],
+            commands: vec![read(), unread(), count(), month(), year(), history(), edit()],
             ..Default::default()
         })
         .build();

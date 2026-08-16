@@ -1,6 +1,7 @@
 use crate::CHAN_WRITER;
 use crate::DB;
 use crate::INTERACTION_WAKER;
+use crate::database::BookRead;
 use crate::database::Since;
 use crate::make_leaderboard;
 use anyhow::Context as _;
@@ -10,6 +11,7 @@ use nucleo::Matcher;
 use nucleo::pattern::CaseMatching;
 use nucleo::pattern::Normalization;
 use nucleo::pattern::Pattern;
+use poise::Modal;
 use poise::serenity_prelude as serenity;
 
 use ::serenity::all::ButtonStyle;
@@ -288,7 +290,77 @@ pub async fn year(ctx: crate::Context<'_>) -> Result<()> {
     Ok(())
 }
 
-// #[poise::command(slash_command)]
-// pub async fn edit(ctx: crate::Context<'_>) -> Result<()> {
-//     Ok(())
-// }
+#[poise::command(slash_command)]
+pub async fn edit(
+    ctx: crate::Context<'_>,
+    #[description = "Book Title"] title: String,
+) -> Result<()> {
+    match ctx {
+        poise::Context::Application(app) => {
+            let mut db = DB.get().unwrap().lock().await;
+            let username = ctx.author().name.as_str();
+            let mut book = db.book_read_by(username, &title).await?;
+            book.datetime.push('Z');
+            let datetime: chrono::DateTime<Utc> = book.datetime.parse()?;
+            let month: chrono::Month = (datetime.month() as u8).try_into()?;
+
+            let res = poise::execute_modal(
+                app,
+                Some(EditModal {
+                    title: book.title.clone(),
+                    month: month.name().to_string(),
+                    year: datetime.year().to_string(),
+                }),
+                Some(std::time::Duration::from_secs(600)),
+            )
+            .await?;
+
+            if res.is_none() {
+                return Ok(());
+            }
+
+            let res = res.unwrap();
+            let new_year = res.year.parse::<i32>()?;
+            let Ok(new_month): Result<chrono::Month, _> = res.month.parse() else {
+                ctx.send(
+                    poise::CreateReply::default()
+                        .content("Failed to parse month. Did you make a typo?")
+                        .ephemeral(true),
+                )
+                .await?;
+                return Ok(());
+            };
+            let new_datetime = NaiveDateTime::new(
+                NaiveDate::from_ymd_opt(new_year, new_month.number_from_month(), 1)
+                    .context("Failed to parse NaiveDate")?,
+                NaiveTime::from_hms_opt(23, 1, 1).unwrap(),
+            );
+            let new = BookRead {
+                username: book.username.clone(),
+                title: res.title,
+                datetime: new_datetime.to_string(),
+            };
+            db.update_book_read(book, new).await?;
+            ctx.send(
+                poise::CreateReply::default()
+                    .content("Updated entry successfully!")
+                    .ephemeral(true),
+            )
+            .await?;
+            db.cleanup_unread_books().await?;
+
+            Ok(())
+        }
+        poise::Context::Prefix(_) => {
+            ctx.reply("Must use inside an application context").await?;
+            Ok(())
+        }
+    }
+}
+
+#[derive(Modal)]
+pub struct EditModal {
+    title: String,
+    month: String,
+    year: String,
+}

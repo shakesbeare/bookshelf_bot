@@ -267,6 +267,68 @@ impl Database {
         Ok(list)
     }
 
+    pub async fn book_read_by<S: AsRef<str>>(&mut self, username: S, title: S) -> Result<BookRead> {
+        let user_id = self.ensure_user(&username).await?;
+        let book_id = self.ensure_book(&title).await?;
+        let book: BookRead = sqlx::query_as::<_, BookRead>(
+            r#"SELECT books.title, B.datetime, B.username FROM books
+            INNER JOIN (
+                SELECT user_books_read.book_id, user_books_read.datetime, users.username FROM user_books_read
+                INNER JOIN users ON users.id = user_books_read.user_id
+                WHERE users.id = $1
+            ) AS B ON books.id = B.book_id
+            WHERE B.book_id = $2;"#,
+        )
+        .bind(user_id)
+        .bind(book_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(book)
+    }
+
+    /// Updates a book read entry
+    pub async fn update_book_read(&mut self, book_read: BookRead, new: BookRead) -> Result<()> {
+        let user_id = self.ensure_user(&book_read.username).await?;
+        let book_id = self.ensure_book(&book_read.title).await?;
+        let new_book_id = self.ensure_book(&new.title).await?;
+
+        if book_id != new_book_id {
+            sqlx::query(
+                r#"INSERT INTO user_books_read (user_id, book_id, datetime)
+                VALUES ($1, $2, $3);"#,
+            )
+            .bind(user_id)
+            .bind(new_book_id)
+            .bind(new.datetime)
+            .execute(&self.pool)
+            .await?;
+
+            sqlx::query(
+                r#"DELETE FROM user_books_read
+                WHERE user_id = $1 AND book_id = $2"#,
+            )
+            .bind(user_id)
+            .bind(book_id)
+            .execute(&self.pool)
+            .await?;
+
+        } else {
+            sqlx::query(
+                r#"UPDATE user_books_read
+                SET datetime = $3
+                WHERE user_id = $1 AND book_id = $2;"#,
+            )
+            .bind(user_id)
+            .bind(book_id)
+            .bind(new.datetime)
+            .execute(&self.pool)
+            .await?;
+        }
+
+        Ok(())
+    }
+
     /// Returns a Vec of the titles of books read by thegiven user
     pub async fn books_read_by<S: AsRef<str>>(
         &mut self,

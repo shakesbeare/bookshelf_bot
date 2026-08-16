@@ -10,11 +10,12 @@ dotenvy = "0.15.7"
 nucleo = "0.5.0"
 nucleo-matcher = "0.3.1"
 poise = "0.6.1"
-serde = "1.0.228"
+serde = { version = "1.0.229", features = ["derive"] }
 serenity = "0.12.5"
 sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.49.0", features = ["full"] }
 tracing = "0.1.44"
 tracing-appender = "0.2.4"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "fmt"] }
+log = { version = "0.4.29", features = ["max_level_trace", "release_max_level_info"]}
 uuid = { version = "1.24.0", features = ["v4"] }

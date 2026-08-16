@@ -89,7 +89,7 @@ impl<S: AsRef<str>> TitleCase for S {
         let mut start = 0;
         let mut i = 0;
         for c in input.chars() {
-            if c.is_whitespace() || (!c.is_alphabetic() && c != '\'') {
+            if c.is_whitespace() || (!c.is_alphanumeric() && c != '\'') {
                 let mut idxs = input.char_indices();
                 let (a, _) = idxs.nth(start).unwrap();
                 let (b, _) = idxs.nth(i - start - 1).unwrap();
@@ -105,7 +105,7 @@ impl<S: AsRef<str>> TitleCase for S {
         let mut follows_colon = false;
         for word in words {
             let word = word.trim();
-            if !first && word.chars().next().unwrap_or(' ').is_alphabetic() {
+            if !first && word.chars().next().unwrap_or(' ').is_alphanumeric() {
                 out.push(' ');
             }
             if first || follows_colon || !word.is_minor() {
@@ -219,6 +219,14 @@ mod tests {
     fn weird_spaces_2() {
         let title = "You are Not Alone: Michael:\nThrough a Brother's Eyes";
         let expected = "You Are Not Alone: Michael: Through a Brother's Eyes";
+        let actual = title.title_case();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn numbers() {
+        let title = "fahrenheit 451";
+        let expected = "Fahrenheit 451";
         let actual = title.title_case();
         assert_eq!(actual, expected);
     }

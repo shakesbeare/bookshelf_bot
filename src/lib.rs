@@ -85,12 +85,15 @@ pub trait TitleCase {
 impl<S: AsRef<str>> TitleCase for S {
     fn title_case(&self) -> String {
         let mut words: Vec<&str> = Vec::new();
-        let input = self.as_ref();
+        let input = self.as_ref().normalize();
         let mut start = 0;
         let mut i = 0;
         for c in input.chars() {
-            if c.is_whitespace() || !c.is_alphabetic() {
-                words.push(&input[start..i]);
+            if c.is_whitespace() || (!c.is_alphabetic() && c != '\'') {
+                let mut idxs = input.char_indices();
+                let (a, _) = idxs.nth(start).unwrap();
+                let (b, _) = idxs.nth(i - start - 1).unwrap();
+                words.push(&input[a..b]);
                 start = i;
             }
             i += 1;
@@ -157,6 +160,17 @@ impl<S: AsRef<str>> IsMinor for S {
     }
 }
 
+pub trait Normalize {
+    fn normalize(&self) -> String;
+}
+
+impl<S: AsRef<str>> Normalize for S {
+    fn normalize(&self) -> String {
+        self.as_ref().to_owned().replace("‘", "'").replace("’", "'").replace("“", "\"").replace("”", "\"")
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -165,6 +179,14 @@ mod tests {
         let title = "the great in the escape: a great on the sea in blabbity off a dock";
         let expected = "The Great in the Escape: A Great on the Sea in Blabbity off a Dock";
         let actual = title.title_case();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn odd_characters() {
+        let title = "Einstein’s Dream";
+        let expected = "Einstein's Dream";
+        let actual = title.normalize();
         assert_eq!(actual, expected);
     }
 }
